@@ -2,53 +2,101 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>結婚式フォトブース</title>
 <style>
   :root{
-    --bg:#1a1614;
-    --accent:#e8b98a;
-    --card:#241f1c;
+    --grad-a:#4FC79E;
+    --grad-b:#F3AE8D;
+    --grad-c:#F4C0D1;
+    --accent:#D85A30;
+    --accent-2:#0F6E56;
   }
   *{box-sizing:border-box;}
-  body{
+  html, body{
     margin:0;
-    background:var(--bg);
-    color:#f2e9e0;
+    height:100dvh;
+    width:100%;
+    background:#000;
+    color:#fff;
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    min-height:100vh;
-    padding:16px;
+    overflow:hidden;
+    position:fixed;
+    inset:0;
+  }
+  .topbar{
+    position:absolute;
+    top:0; left:0; right:0;
+    z-index:6;
+    text-align:center;
+    padding:calc(env(safe-area-inset-top, 0px) + 14px) 16px 20px;
+    background:linear-gradient(135deg, rgba(79,199,158,0.55), rgba(243,174,141,0.4));
   }
   h1{
-    font-size:18px;
+    font-size:16px;
     font-weight:600;
-    letter-spacing:0.05em;
-    margin:8px 0 4px;
+    letter-spacing:0.03em;
+    margin:0 0 4px;
+    text-shadow:0 1px 4px rgba(0,0,0,0.3);
   }
   .count{
     font-size:13px;
-    color:var(--accent);
-    margin-bottom:12px;
+    color:#fff;
+    text-shadow:0 1px 4px rgba(0,0,0,0.3);
+    margin-bottom:10px;
+  }
+  .flipBtn{
+    position:absolute;
+    top:calc(env(safe-area-inset-top, 0px) + 14px);
+    right:14px;
+    width:38px;
+    height:38px;
+    border-radius:50%;
+    background:rgba(0,0,0,0.35);
+    border:1px solid rgba(255,255,255,0.4);
+    color:#fff;
+    font-size:18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:auto;
+    padding:0;
+  }
+  .modeToggle{
+    display:inline-flex;
+    gap:6px;
+    background:rgba(0,0,0,0.3);
+    padding:4px;
+    border-radius:999px;
+    pointer-events:auto;
+  }
+  .modeToggle button{
+    font-size:12px;
+    padding:6px 14px;
+    border-radius:999px;
+    border:none;
+    background:transparent;
+    color:#fff;
+    font-weight:500;
+  }
+  .modeToggle button.active{
+    background:linear-gradient(135deg, var(--grad-a), var(--grad-b));
+    color:#1a1614;
   }
   .stage{
-    position:relative;
-    width:100%;
-    max-width:420px;
-    aspect-ratio:3/4;
+    position:absolute;
+    inset:0;
     background:#000;
-    border-radius:18px;
     overflow:hidden;
-    box-shadow:0 8px 30px rgba(0,0,0,0.5);
   }
   video, canvas, img.preview{
     width:100%;
     height:100%;
     object-fit:cover;
     display:block;
+    transform-origin:center center;
   }
-  #video{
+  #video.film-mode{
     filter: sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03);
   }
   .grain-overlay{
@@ -63,23 +111,50 @@
     position:absolute;
     inset:0;
     pointer-events:none;
-    box-shadow: inset 0 0 90px 30px rgba(0,0,0,0.55);
+    box-shadow: inset 0 0 140px 50px rgba(0,0,0,0.5);
   }
   .datestamp{
     position:absolute;
-    right:12px;
-    bottom:10px;
+    right:16px;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 160px);
     font-family:"Courier New",monospace;
     color:#ff9d4d;
-    font-size:15px;
+    font-size:16px;
     text-shadow:0 0 4px rgba(0,0,0,0.6);
     letter-spacing:0.05em;
     pointer-events:none;
+    z-index:4;
+  }
+  .zoomRow{
+    position:absolute;
+    left:24px; right:24px;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 108px);
+    z-index:5;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .zoomRow span{
+    font-size:12px;
+    color:#fff;
+    text-shadow:0 1px 4px rgba(0,0,0,0.5);
+    min-width:32px;
+  }
+  .zoomRow input[type=range]{
+    flex:1;
+    accent-color:var(--accent);
   }
   .controls{
+    position:absolute;
+    left:0; right:0;
+    bottom:0;
+    z-index:5;
     display:flex;
+    justify-content:center;
+    align-items:center;
     gap:14px;
-    margin-top:20px;
+    padding:18px 20px calc(env(safe-area-inset-bottom, 0px) + 28px);
+    background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.6));
   }
   button{
     border:none;
@@ -90,12 +165,13 @@
     cursor:pointer;
   }
   #shutterBtn{
-    width:70px;
-    height:70px;
+    width:72px;
+    height:72px;
     border-radius:50%;
-    background:var(--accent);
+    background:linear-gradient(135deg, var(--grad-a), var(--grad-b));
     color:#1a1614;
     font-size:26px;
+    border:4px solid rgba(255,255,255,0.6);
   }
   #shutterBtn:disabled{
     background:#5a5450;
@@ -103,42 +179,76 @@
     cursor:not-allowed;
   }
   .review-actions button{
-    background:var(--card);
-    color:#f2e9e0;
-    border:1px solid #3a332e;
+    background:rgba(20,20,20,0.55);
+    color:#fff;
+    border:1px solid rgba(255,255,255,0.3);
   }
   .review-actions button.primary{
-    background:var(--accent);
+    background:linear-gradient(135deg, var(--grad-a), var(--grad-b));
     color:#1a1614;
+    border:none;
   }
   .status{
-    margin-top:14px;
+    position:absolute;
+    left:0; right:0;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 96px);
+    z-index:5;
     font-size:13px;
-    color:#b8afa6;
-    min-height:18px;
+    color:#fff;
     text-align:center;
+    pointer-events:none;
+    text-shadow:0 1px 4px rgba(0,0,0,0.6);
   }
   .done{
+    position:absolute;
+    inset:0;
+    z-index:10;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
     text-align:center;
     padding:40px 20px;
+    background:linear-gradient(160deg, var(--grad-a) 0%, var(--grad-c) 55%, var(--grad-b) 100%);
+  }
+  .done .ring{
+    font-size:44px;
+    margin-bottom:6px;
   }
   .done h2{
-    color:var(--accent);
+    color:#3a2418;
+    margin:0 0 8px;
+  }
+  .done p{
+    color:#3a2418;
   }
 </style>
 </head>
 <body>
 
-<h1>📷 Wedding Photo Booth</h1>
-<div class="count" id="countLabel">残り撮影可能枚数: -</div>
-
 <div class="stage" id="stage">
-  <video id="video" autoplay playsinline muted></video>
+  <video id="video" class="film-mode" autoplay playsinline muted></video>
   <canvas id="canvas" style="display:none;"></canvas>
   <img id="previewImg" class="preview" style="display:none;">
-  <div class="grain-overlay"></div>
-  <div class="vignette"></div>
+  <div class="grain-overlay" id="grainOverlay"></div>
+  <div class="vignette" id="vignetteOverlay"></div>
   <div class="datestamp" id="datestamp"></div>
+</div>
+
+<div class="topbar">
+  <button class="flipBtn" id="flipBtn" aria-label="カメラ切り替え">🔄</button>
+  <h1>💍 Wedding Photo Booth</h1>
+  <div class="count" id="countLabel">残り撮影可能枚数: -</div>
+  <div class="modeToggle">
+    <button id="filmModeBtn" class="active">🎞 フィルム</button>
+    <button id="normalModeBtn">☀️ ノーマル</button>
+  </div>
+</div>
+
+<div class="zoomRow" id="zoomRow">
+  <span>1.0x</span>
+  <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1">
+  <span id="zoomLabel">1.0x</span>
 </div>
 
 <div class="controls" id="captureControls">
@@ -153,16 +263,16 @@
 <div class="status" id="statusMsg"></div>
 
 <div class="done" id="doneScreen" style="display:none;">
-  <h2>撮影可能枚数を使い切りました 🎉</h2>
+  <div class="ring">💍</div>
+  <h2>撮影可能枚数を使い切りました</h2>
   <p>素敵な写真をありがとうございました！</p>
 </div>
 
 <script>
-const LIMIT = 10; // 1人あたりの上限枚数（相談の上10枚に設定）
+const LIMIT = 10;
 const STORAGE_KEY = 'wedding_photo_count_v1';
 
 // ↓↓↓ ここにデプロイしたGoogle Apps ScriptのURLを貼り付けてください ↓↓↓
-// 例: https://script.google.com/macros/s/AKfycb.../exec
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzd2bLy7zuqZ-91UqSQLtzSl520OoujbRKqcAAkpyDHNGxLsQJf-hQpYuPchbYyIVJ5/exec';
 
 const video = document.getElementById('video');
@@ -178,10 +288,21 @@ const countLabel = document.getElementById('countLabel');
 const doneScreen = document.getElementById('doneScreen');
 const stage = document.getElementById('stage');
 const datestampEl = document.getElementById('datestamp');
+const flipBtn = document.getElementById('flipBtn');
+const filmModeBtn = document.getElementById('filmModeBtn');
+const normalModeBtn = document.getElementById('normalModeBtn');
+const grainOverlay = document.getElementById('grainOverlay');
+const vignetteOverlay = document.getElementById('vignetteOverlay');
+const zoomSlider = document.getElementById('zoomSlider');
+const zoomLabel = document.getElementById('zoomLabel');
+const zoomRow = document.getElementById('zoomRow');
 
 let currentCount = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
 let capturedDataUrl = null;
 let stream = null;
+let currentFacing = 'environment';
+let filmMode = true;
+let zoomLevel = 1;
 
 function updateCountLabel(){
   const remaining = Math.max(0, LIMIT - currentCount);
@@ -195,8 +316,10 @@ function showDoneScreen(){
   stage.style.display = 'none';
   captureControls.style.display = 'none';
   reviewControls.style.display = 'none';
-  countLabel.style.display = 'none';
-  doneScreen.style.display = 'block';
+  zoomRow.style.display = 'none';
+  document.querySelector('.topbar').style.display = 'none';
+  statusMsg.style.display = 'none';
+  doneScreen.style.display = 'flex';
   if (stream) stream.getTracks().forEach(t => t.stop());
 }
 
@@ -206,17 +329,41 @@ function setDatestamp(){
   datestampEl.textContent = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
 }
 
-async function initCamera(){
+async function startCamera(facing){
+  if (stream) stream.getTracks().forEach(t => t.stop());
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' },
+      video: { facingMode: facing },
       audio: false
     });
     video.srcObject = stream;
+    currentFacing = facing;
   }catch(e){
     statusMsg.textContent = 'カメラを起動できませんでした。ブラウザのカメラ許可設定を確認してください。';
   }
 }
+
+flipBtn.addEventListener('click', () => {
+  const next = currentFacing === 'environment' ? 'user' : 'environment';
+  startCamera(next);
+});
+
+zoomSlider.addEventListener('input', () => {
+  zoomLevel = parseFloat(zoomSlider.value);
+  zoomLabel.textContent = zoomLevel.toFixed(1) + 'x';
+  video.style.transform = `scale(${zoomLevel})`;
+});
+
+function updateModeUI(){
+  video.classList.toggle('film-mode', filmMode);
+  grainOverlay.style.display = filmMode ? 'block' : 'none';
+  vignetteOverlay.style.display = filmMode ? 'block' : 'none';
+  datestampEl.style.display = filmMode ? 'block' : 'none';
+  filmModeBtn.classList.toggle('active', filmMode);
+  normalModeBtn.classList.toggle('active', !filmMode);
+}
+filmModeBtn.addEventListener('click', () => { filmMode = true; updateModeUI(); });
+normalModeBtn.addEventListener('click', () => { filmMode = false; updateModeUI(); });
 
 function addGrainToCanvas(ctx, w, h){
   const imgData = ctx.getImageData(0,0,w,h);
@@ -232,20 +379,17 @@ function addGrainToCanvas(ctx, w, h){
 function clamp(v){ return Math.max(0, Math.min(255, v)); }
 
 function applyFilmLook(ctx, w, h){
-  // 暖色トーン + コントラスト風の簡易カラーグレーディング
   ctx.globalCompositeOperation = 'multiply';
   ctx.fillStyle = 'rgba(255,214,170,0.12)';
   ctx.fillRect(0,0,w,h);
   ctx.globalCompositeOperation = 'source-over';
 
-  // ビネット
   const grad = ctx.createRadialGradient(w/2,h/2, h*0.25, w/2,h/2, h*0.75);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
   grad.addColorStop(1, 'rgba(0,0,0,0.45)');
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,w,h);
 
-  // 日付風スタンプ
   const d = new Date();
   const pad = n => String(n).padStart(2,'0');
   const label = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
@@ -260,19 +404,31 @@ function applyFilmLook(ctx, w, h){
 shutterBtn.addEventListener('click', () => {
   const w = video.videoWidth;
   const h = video.videoHeight;
+  const sw = w / zoomLevel;
+  const sh = h / zoomLevel;
+  const sx = (w - sw) / 2;
+  const sy = (h - sh) / 2;
+
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.filter = 'sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03)';
-  ctx.drawImage(video, 0, 0, w, h);
+
+  if (filmMode){
+    ctx.filter = 'sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03)';
+  }
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
   ctx.filter = 'none';
-  applyFilmLook(ctx, w, h);
+
+  if (filmMode){
+    applyFilmLook(ctx, w, h);
+  }
 
   capturedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
   previewImg.src = capturedDataUrl;
   previewImg.style.display = 'block';
   video.style.display = 'none';
   captureControls.style.display = 'none';
+  zoomRow.style.display = 'none';
   reviewControls.style.display = 'flex';
 });
 
@@ -282,6 +438,7 @@ retakeBtn.addEventListener('click', () => {
   video.style.display = 'block';
   reviewControls.style.display = 'none';
   captureControls.style.display = 'flex';
+  zoomRow.style.display = 'flex';
 });
 
 useBtn.addEventListener('click', () => {
@@ -294,7 +451,7 @@ useBtn.addEventListener('click', () => {
 
   fetch(APPS_SCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // CORSのプリフライトを避けるためtext/plainにする
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ image: capturedDataUrl, fileName: fileName })
   })
     .then(res => res.json())
@@ -306,7 +463,7 @@ useBtn.addEventListener('click', () => {
         localStorage.setItem(STORAGE_KEY, String(currentCount));
         statusMsg.textContent = '送信しました！ありがとうございます 📸';
         updateCountLabel();
-        retakeBtn.click(); // カメラ画面に戻す（枚数が0ならshowDoneScreenが発火）
+        retakeBtn.click();
       } else {
         statusMsg.textContent = '送信に失敗しました。もう一度お試しください。';
       }
@@ -320,8 +477,9 @@ useBtn.addEventListener('click', () => {
 
 setDatestamp();
 updateCountLabel();
+updateModeUI();
 if (currentCount < LIMIT){
-  initCamera();
+  startCamera(currentFacing);
 } else {
   showDoneScreen();
 }
