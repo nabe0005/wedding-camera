@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>結婚式フォトブース</title>
+<style>
+  :root{
+    --bg:#1a1614;
+    --accent:#e8b98a;
+    --card:#241f1c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:#f2e9e0;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    padding:16px;
+  }
+  h1{
+    font-size:18px;
+    font-weight:600;
+    letter-spacing:0.05em;
+    margin:8px 0 4px;
+  }
+  .count{
+    font-size:13px;
+    color:var(--accent);
+    margin-bottom:12px;
+  }
+  .stage{
+    position:relative;
+    width:100%;
+    max-width:420px;
+    aspect-ratio:3/4;
+    background:#000;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 8px 30px rgba(0,0,0,0.5);
+  }
+  video, canvas, img.preview{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  #video{
+    filter: sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03);
+  }
+  .grain-overlay{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    mix-blend-mode:overlay;
+    opacity:0.35;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .vignette{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    box-shadow: inset 0 0 90px 30px rgba(0,0,0,0.55);
+  }
+  .datestamp{
+    position:absolute;
+    right:12px;
+    bottom:10px;
+    font-family:"Courier New",monospace;
+    color:#ff9d4d;
+    font-size:15px;
+    text-shadow:0 0 4px rgba(0,0,0,0.6);
+    letter-spacing:0.05em;
+    pointer-events:none;
+  }
+  .controls{
+    display:flex;
+    gap:14px;
+    margin-top:20px;
+  }
+  button{
+    border:none;
+    border-radius:999px;
+    padding:14px 26px;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #shutterBtn{
+    width:70px;
+    height:70px;
+    border-radius:50%;
+    background:var(--accent);
+    color:#1a1614;
+    font-size:26px;
+  }
+  #shutterBtn:disabled{
+    background:#5a5450;
+    color:#8a8480;
+    cursor:not-allowed;
+  }
+  .review-actions button{
+    background:var(--card);
+    color:#f2e9e0;
+    border:1px solid #3a332e;
+  }
+  .review-actions button.primary{
+    background:var(--accent);
+    color:#1a1614;
+  }
+  .status{
+    margin-top:14px;
+    font-size:13px;
+    color:#b8afa6;
+    min-height:18px;
+    text-align:center;
+  }
+  .done{
+    text-align:center;
+    padding:40px 20px;
+  }
+  .done h2{
+    color:var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<h1>📷 Wedding Photo Booth</h1>
+<div class="count" id="countLabel">残り撮影可能枚数: -</div>
+
+<div class="stage" id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <img id="previewImg" class="preview" style="display:none;">
+  <div class="grain-overlay"></div>
+  <div class="vignette"></div>
+  <div class="datestamp" id="datestamp"></div>
+</div>
+
+<div class="controls" id="captureControls">
+  <button id="shutterBtn">●</button>
+</div>
+
+<div class="controls review-actions" id="reviewControls" style="display:none;">
+  <button id="retakeBtn">撮り直す</button>
+  <button id="useBtn" class="primary">この写真を送る</button>
+</div>
+
+<div class="status" id="statusMsg"></div>
+
+<div class="done" id="doneScreen" style="display:none;">
+  <h2>撮影可能枚数を使い切りました 🎉</h2>
+  <p>素敵な写真をありがとうございました！</p>
+</div>
+
+<script>
+const LIMIT = 10; // 1人あたりの上限枚数（相談の上10枚に設定）
+const STORAGE_KEY = 'wedding_photo_count_v1';
+
+// ↓↓↓ ここにデプロイしたGoogle Apps ScriptのURLを貼り付けてください ↓↓↓
+// 例: https://script.google.com/macros/s/AKfycb.../exec
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzd2bLy7zuqZ-91UqSQLtzSl520OoujbRKqcAAkpyDHNGxLsQJf-hQpYuPchbYyIVJ5/exec';
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const previewImg = document.getElementById('previewImg');
+const shutterBtn = document.getElementById('shutterBtn');
+const retakeBtn = document.getElementById('retakeBtn');
+const useBtn = document.getElementById('useBtn');
+const captureControls = document.getElementById('captureControls');
+const reviewControls = document.getElementById('reviewControls');
+const statusMsg = document.getElementById('statusMsg');
+const countLabel = document.getElementById('countLabel');
+const doneScreen = document.getElementById('doneScreen');
+const stage = document.getElementById('stage');
+const datestampEl = document.getElementById('datestamp');
+
+let currentCount = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+let capturedDataUrl = null;
+let stream = null;
+
+function updateCountLabel(){
+  const remaining = Math.max(0, LIMIT - currentCount);
+  countLabel.textContent = `残り撮影可能枚数: ${remaining} / ${LIMIT}`;
+  if (remaining <= 0){
+    showDoneScreen();
+  }
+}
+
+function showDoneScreen(){
+  stage.style.display = 'none';
+  captureControls.style.display = 'none';
+  reviewControls.style.display = 'none';
+  countLabel.style.display = 'none';
+  doneScreen.style.display = 'block';
+  if (stream) stream.getTracks().forEach(t => t.stop());
+}
+
+function setDatestamp(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  datestampEl.textContent = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
+}
+
+async function initCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false
+    });
+    video.srcObject = stream;
+  }catch(e){
+    statusMsg.textContent = 'カメラを起動できませんでした。ブラウザのカメラ許可設定を確認してください。';
+  }
+}
+
+function addGrainToCanvas(ctx, w, h){
+  const imgData = ctx.getImageData(0,0,w,h);
+  const d = imgData.data;
+  for (let i=0; i<d.length; i+=4){
+    const noise = (Math.random()-0.5) * 22;
+    d[i]   = clamp(d[i]+noise);
+    d[i+1] = clamp(d[i+1]+noise);
+    d[i+2] = clamp(d[i+2]+noise);
+  }
+  ctx.putImageData(imgData,0,0);
+}
+function clamp(v){ return Math.max(0, Math.min(255, v)); }
+
+function applyFilmLook(ctx, w, h){
+  // 暖色トーン + コントラスト風の簡易カラーグレーディング
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = 'rgba(255,214,170,0.12)';
+  ctx.fillRect(0,0,w,h);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // ビネット
+  const grad = ctx.createRadialGradient(w/2,h/2, h*0.25, w/2,h/2, h*0.75);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.45)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+
+  // 日付風スタンプ
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const label = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
+  ctx.font = '28px "Courier New", monospace';
+  ctx.fillStyle = 'rgba(255,157,77,0.9)';
+  ctx.textAlign = 'right';
+  ctx.fillText(label, w-20, h-20);
+
+  addGrainToCanvas(ctx, w, h);
+}
+
+shutterBtn.addEventListener('click', () => {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.filter = 'sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03)';
+  ctx.drawImage(video, 0, 0, w, h);
+  ctx.filter = 'none';
+  applyFilmLook(ctx, w, h);
+
+  capturedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  previewImg.src = capturedDataUrl;
+  previewImg.style.display = 'block';
+  video.style.display = 'none';
+  captureControls.style.display = 'none';
+  reviewControls.style.display = 'flex';
+});
+
+retakeBtn.addEventListener('click', () => {
+  capturedDataUrl = null;
+  previewImg.style.display = 'none';
+  video.style.display = 'block';
+  reviewControls.style.display = 'none';
+  captureControls.style.display = 'flex';
+});
+
+useBtn.addEventListener('click', () => {
+  if (!capturedDataUrl) return;
+  useBtn.disabled = true;
+  retakeBtn.disabled = true;
+  statusMsg.textContent = '送信中...';
+
+  const fileName = `wedding_${Date.now()}.jpg`;
+
+  fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // CORSのプリフライトを避けるためtext/plainにする
+    body: JSON.stringify({ image: capturedDataUrl, fileName: fileName })
+  })
+    .then(res => res.json())
+    .then(res => {
+      useBtn.disabled = false;
+      retakeBtn.disabled = false;
+      if (res && res.success){
+        currentCount += 1;
+        localStorage.setItem(STORAGE_KEY, String(currentCount));
+        statusMsg.textContent = '送信しました！ありがとうございます 📸';
+        updateCountLabel();
+        retakeBtn.click(); // カメラ画面に戻す（枚数が0ならshowDoneScreenが発火）
+      } else {
+        statusMsg.textContent = '送信に失敗しました。もう一度お試しください。';
+      }
+    })
+    .catch(() => {
+      useBtn.disabled = false;
+      retakeBtn.disabled = false;
+      statusMsg.textContent = '通信エラーが発生しました。もう一度お試しください。';
+    });
+});
+
+setDatestamp();
+updateCountLabel();
+if (currentCount < LIMIT){
+  initCamera();
+} else {
+  showDoneScreen();
+}
+</script>
+</body>
+</html>
