@@ -45,10 +45,9 @@
     text-shadow:0 1px 4px rgba(0,0,0,0.3);
     margin-bottom:10px;
   }
-  .flipBtn{
+  .iconBtn{
     position:absolute;
     top:calc(env(safe-area-inset-top, 0px) + 14px);
-    right:14px;
     width:38px;
     height:38px;
     border-radius:50%;
@@ -62,6 +61,8 @@
     pointer-events:auto;
     padding:0;
   }
+  #flipBtn{ right:14px; }
+  #galleryBtn{ left:14px; }
   .modeToggle{
     display:inline-flex;
     gap:6px;
@@ -222,6 +223,53 @@
   .done p{
     color:#3a2418;
   }
+  .galleryOverlay{
+    position:absolute;
+    inset:0;
+    z-index:20;
+    background:linear-gradient(160deg, #1b3b32 0%, #3a2418 100%);
+    display:none;
+    flex-direction:column;
+  }
+  .galleryOverlay.open{ display:flex; }
+  .galleryHeader{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:calc(env(safe-area-inset-top, 0px) + 14px) 16px 12px;
+  }
+  .galleryHeader h2{
+    font-size:15px;
+    margin:0;
+    color:#fff;
+  }
+  .galleryHeader button{
+    background:rgba(255,255,255,0.15);
+    color:#fff;
+    padding:8px 16px;
+    font-size:13px;
+  }
+  .galleryGrid{
+    flex:1;
+    overflow-y:auto;
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:4px;
+    padding:0 8px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  }
+  .galleryGrid img{
+    width:100%;
+    aspect-ratio:1/1;
+    object-fit:cover;
+    border-radius:6px;
+    background:rgba(255,255,255,0.1);
+  }
+  .galleryEmpty{
+    text-align:center;
+    color:#f2e9e0;
+    font-size:13px;
+    padding:30px;
+  }
 </style>
 </head>
 <body>
@@ -236,7 +284,8 @@
 </div>
 
 <div class="topbar">
-  <button class="flipBtn" id="flipBtn" aria-label="カメラ切り替え">🔄</button>
+  <button class="iconBtn" id="galleryBtn" aria-label="みんなの写真">🖼</button>
+  <button class="iconBtn" id="flipBtn" aria-label="カメラ切り替え">🔄</button>
   <h1>💍 Wedding Photo Booth</h1>
   <div class="count" id="countLabel">残り撮影可能枚数: -</div>
   <div class="modeToggle">
@@ -268,6 +317,14 @@
   <p>素敵な写真をありがとうございました！</p>
 </div>
 
+<div class="galleryOverlay" id="galleryOverlay">
+  <div class="galleryHeader">
+    <h2>💐 みんなの写真</h2>
+    <button id="galleryCloseBtn">閉じる</button>
+  </div>
+  <div class="galleryGrid" id="galleryGrid"></div>
+</div>
+
 <script>
 const LIMIT = 10;
 const STORAGE_KEY = 'wedding_photo_count_v1';
@@ -296,6 +353,10 @@ const vignetteOverlay = document.getElementById('vignetteOverlay');
 const zoomSlider = document.getElementById('zoomSlider');
 const zoomLabel = document.getElementById('zoomLabel');
 const zoomRow = document.getElementById('zoomRow');
+const galleryBtn = document.getElementById('galleryBtn');
+const galleryOverlay = document.getElementById('galleryOverlay');
+const galleryCloseBtn = document.getElementById('galleryCloseBtn');
+const galleryGrid = document.getElementById('galleryGrid');
 
 let currentCount = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
 let capturedDataUrl = null;
@@ -329,6 +390,28 @@ function setDatestamp(){
   datestampEl.textContent = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
 }
 
+// --- 画面の向きを取得（インカメラの上下反転補正に使用）---
+function getOrientationAngle(){
+  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  if (typeof window.orientation === 'number') return window.orientation;
+  return 0;
+}
+
+// インカメラを横向き（landscape-secondary相当）で使うと上下反転する端末があるための補正
+function getRotationCorrection(){
+  if (currentFacing !== 'user') return 0;
+  const angle = ((getOrientationAngle() % 360) + 360) % 360;
+  if (angle === 270 || angle === -90) return 180;
+  return 0;
+}
+
+function updateVideoTransform(){
+  const rotation = getRotationCorrection();
+  video.style.transform = `scale(${zoomLevel}) rotate(${rotation}deg)`;
+}
+window.addEventListener('orientationchange', updateVideoTransform);
+if (screen.orientation) screen.orientation.addEventListener('change', updateVideoTransform);
+
 async function startCamera(facing){
   if (stream) stream.getTracks().forEach(t => t.stop());
   try{
@@ -338,6 +421,7 @@ async function startCamera(facing){
     });
     video.srcObject = stream;
     currentFacing = facing;
+    updateVideoTransform();
   }catch(e){
     statusMsg.textContent = 'カメラを起動できませんでした。ブラウザのカメラ許可設定を確認してください。';
   }
@@ -351,7 +435,7 @@ flipBtn.addEventListener('click', () => {
 zoomSlider.addEventListener('input', () => {
   zoomLevel = parseFloat(zoomSlider.value);
   zoomLabel.textContent = zoomLevel.toFixed(1) + 'x';
-  video.style.transform = `scale(${zoomLevel})`;
+  updateVideoTransform();
 });
 
 function updateModeUI(){
@@ -408,16 +492,24 @@ shutterBtn.addEventListener('click', () => {
   const sh = h / zoomLevel;
   const sx = (w - sw) / 2;
   const sy = (h - sh) / 2;
+  const rotation = getRotationCorrection();
 
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
 
+  ctx.save();
+  if (rotation !== 0){
+    ctx.translate(w/2, h/2);
+    ctx.rotate(rotation * Math.PI / 180);
+    ctx.translate(-w/2, -h/2);
+  }
   if (filmMode){
     ctx.filter = 'sepia(0.18) saturate(1.25) contrast(1.08) brightness(1.03)';
   }
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
   ctx.filter = 'none';
+  ctx.restore();
 
   if (filmMode){
     applyFilmLook(ctx, w, h);
@@ -462,6 +554,7 @@ useBtn.addEventListener('click', () => {
         currentCount += 1;
         localStorage.setItem(STORAGE_KEY, String(currentCount));
         statusMsg.textContent = '送信しました！ありがとうございます 📸';
+        if (navigator.vibrate) navigator.vibrate(80);
         updateCountLabel();
         retakeBtn.click();
       } else {
@@ -473,6 +566,35 @@ useBtn.addEventListener('click', () => {
       retakeBtn.disabled = false;
       statusMsg.textContent = '通信エラーが発生しました。もう一度お試しください。';
     });
+});
+
+// --- みんなの写真ギャラリー ---
+async function loadGallery(){
+  galleryGrid.innerHTML = '<div class="galleryEmpty">読み込み中...</div>';
+  try{
+    const res = await fetch(APPS_SCRIPT_URL + '?action=list');
+    const data = await res.json();
+    if (data.success && data.items.length > 0){
+      galleryGrid.innerHTML = '';
+      data.items.forEach(item => {
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.loading = 'lazy';
+        galleryGrid.appendChild(img);
+      });
+    } else {
+      galleryGrid.innerHTML = '<div class="galleryEmpty">まだ写真がありません</div>';
+    }
+  }catch(e){
+    galleryGrid.innerHTML = '<div class="galleryEmpty">読み込みに失敗しました</div>';
+  }
+}
+galleryBtn.addEventListener('click', () => {
+  galleryOverlay.classList.add('open');
+  loadGallery();
+});
+galleryCloseBtn.addEventListener('click', () => {
+  galleryOverlay.classList.remove('open');
 });
 
 setDatestamp();
