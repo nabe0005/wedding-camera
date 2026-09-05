@@ -298,6 +298,7 @@
   <span>1.0x</span>
   <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1">
   <span id="zoomLabel">1.0x</span>
+  <button id="nudgeBtn" aria-label="向きを微調整" style="width:34px;height:34px;padding:0;border-radius:50%;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.4);color:#fff;font-size:15px;flex-shrink:0;">↻</button>
 </div>
 
 <div class="controls" id="captureControls">
@@ -390,20 +391,67 @@ function setDatestamp(){
   datestampEl.textContent = `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;
 }
 
-// --- 画面の向きを取得（インカメラの上下反転補正に使用）---
+// --- 画面ロックの状態に関係なく、端末の物理的な傾きセンサーで補正する ---
+let motionPermissionGranted = false;
+let physicalTiltAngle = 0;   // センサーから検出した自動補正角度
+let manualNudge = 0;         // 手動微調整ボタンで加算される角度
+
+function requestMotionPermission(){
+  if (motionPermissionGranted) return;
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === 'granted'){
+        motionPermissionGranted = true;
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    }).catch(() => {});
+  } else {
+    motionPermissionGranted = true;
+    window.addEventListener('deviceorientation', handleOrientation);
+  }
+}
+
+function handleOrientation(event){
+  const beta = event.beta;
+  const gamma = event.gamma;
+  if (beta === null || gamma === null) return;
+  let angle;
+  if (Math.abs(gamma) > 45){
+    angle = gamma > 0 ? 90 : -90;
+  } else if (beta < 0){
+    angle = 180;
+  } else {
+    angle = 0;
+  }
+  physicalTiltAngle = ((angle % 360) + 360) % 360;
+  updateVideoTransform();
+}
+
+// センサー未対応・未許可のブラウザ向けフォールバック（画面の向きベース）
 function getOrientationAngle(){
   if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
   if (typeof window.orientation === 'number') return window.orientation;
   return 0;
 }
 
-// インカメラを横向き（landscape-secondary相当）で使うと上下反転する端末があるための補正
 function getRotationCorrection(){
-  if (currentFacing !== 'user') return 0;
-  const angle = ((getOrientationAngle() % 360) + 360) % 360;
-  if (angle === 270 || angle === -90) return 180;
-  return 0;
+  let base;
+  if (motionPermissionGranted){
+    base = physicalTiltAngle;
+  } else if (currentFacing === 'user'){
+    const angle = ((getOrientationAngle() % 360) + 360) % 360;
+    base = (angle === 270 || angle === -90) ? 180 : 0;
+  } else {
+    base = 0;
+  }
+  return ((base + manualNudge) % 360 + 360) % 360;
 }
+
+const nudgeBtn = document.getElementById('nudgeBtn');
+nudgeBtn.addEventListener('click', () => {
+  manualNudge = (manualNudge + 90) % 360;
+  updateVideoTransform();
+});
 
 function updateVideoTransform(){
   const rotation = getRotationCorrection();
@@ -428,6 +476,7 @@ async function startCamera(facing){
 }
 
 flipBtn.addEventListener('click', () => {
+  requestMotionPermission();
   const next = currentFacing === 'environment' ? 'user' : 'environment';
   startCamera(next);
 });
@@ -486,6 +535,7 @@ function applyFilmLook(ctx, w, h){
 }
 
 shutterBtn.addEventListener('click', () => {
+  requestMotionPermission();
   const w = video.videoWidth;
   const h = video.videoHeight;
   const sw = w / zoomLevel;
